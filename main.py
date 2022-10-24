@@ -1,5 +1,6 @@
 import pickle
 from selenium import webdriver
+from selenium.common import NoSuchElementException
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
@@ -11,65 +12,91 @@ def scrap():
     departure_user, arrival_user, date_departure_user, month_difference = user_data()
 
     option = webdriver.ChromeOptions()
-    option.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-                        '(KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36')
-
-    option.add_argument("--disable-notifications")
-    option.add_argument('--disable-blink-features=AutomationControlled')
+    option.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36')
 
     url = 'https://fly2.emirates.com/CAB/IBE/SearchAvailability.aspx'
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=option)
     driver.maximize_window()  # For maximizing window
     driver.set_page_load_timeout(30)
+
     driver.get(url)
+    for arrival in arrival_user:
 
+        # прохожу всплывающую страницу
+        time.sleep(2)
+        try:
+            button_accept = driver.find_element(By.XPATH, '//*[@id="onetrust-accept-btn-handler"]')
+            button_accept.click()
+        except NoSuchElementException:
+            pass
+        time.sleep(1)
+        button_new_search = driver.find_element(By.XPATH, '//*[@id="column2"]/div[2]/a')
+        button_new_search.click()
+        time.sleep(3)
 
-    # дохожу до нужной мне страницы
-    time.sleep(2)
-    try:
-        button_accept = driver.find_element(By.XPATH, '//*[@id="onetrust-accept-btn-handler"]')
-        button_accept.click()
-    except:
-        pass
-    time.sleep(1)
-    button_new_search = driver.find_element(By.XPATH, '//*[@id="column2"]/div[2]/a')
-    button_new_search.click()
-    time.sleep(3)
+        # Выбираю поле One way
+        driver.find_element(By.XPATH, '//*[@id="ctl00_c_CtWNW_ltOneway"]').click()
 
+        # Заполняю поле откуда вылет
+        departure_airport = driver.find_element(By.XPATH, '//*[@id="ctl00_c_CtWNW_ddlFrom-suggest"]')
+        departure_airport.send_keys(departure_user)
 
-    # Выбираю поле One way
-    driver.find_element(By.XPATH, '//*[@id="ctl00_c_CtWNW_ltOneway"]').click()
+        # заполняю поле куда прилёт
+        arrival_airport = driver.find_element(By.XPATH, '//*[@id="ctl00_c_CtWNW_ddlTo-suggest"]')
 
-    # Заполняю поле откуда вылет
-    departure_airport = driver.find_element(By.XPATH, '//*[@id="ctl00_c_CtWNW_ddlFrom-suggest"]')
-    departure_airport.send_keys(departure_user)
+        arrival_airport.send_keys(arrival)
 
-    # заполняю поле куда прилёт
-    arrival_airport = driver.find_element(By.XPATH, '//*[@id="ctl00_c_CtWNW_ddlTo-suggest"]')
-    arrival_airport.send_keys(arrival_user)
+        # выбираю дату
+        departing = driver.find_element(By.XPATH, '//*[@id="txtDepartDate"]')
+        departing.click()
 
-    # выбираю дату
-    departing = driver.find_element(By.XPATH, '//*[@id="txtDepartDate"]')
-    departing.click()
+        # листаю страницы в таблице выбора даты
+        if month_difference > 1:
+            for i in range(month_difference):
+                driver.find_element(By.XPATH, '//*[@id="nextMonth"]').click()
+                time.sleep(0.3)
+        driver.find_element(By.XPATH, f'//*[@id="day-{date_departure_user}"]').click()
+        driver.find_element(By.XPATH, '//*[@id="ctl00_c_IBE_PB_FF"]').click()
 
-    # листаю страницы в таблице выбора даты
-    if month_difference > 1:
-        for i in range(month_difference):
-            driver.find_element(By.XPATH, '//*[@id="nextMonth"]').click()
-            time.sleep(0.3)
+        flight_information = []
 
-    driver.find_element(By.XPATH, f'//*[@id="day-{date_departure_user}"]').click()
-    driver.find_element(By.XPATH, '//*[@id="ctl00_c_IBE_PB_FF"]').click()
+        for i in range(100):
+            x_path = f'//*[@id="ctl00_c_ctlPriceResult_ctl0{i}_IdFlights"]'
 
-    # клацаю на лого и повторяю процедуру (по другому не пускает)
-    time.sleep(1)
-    driver.find_element(By.XPATH, '//*[@id="ctl00_IBEHeader_NEW_EK_LOGO"]').click()
-    time.sleep(50)
+            path_price = x_path + '/div[3]/div[2]/div[1]/div'
+            path_total_time = x_path + '/div[2]/div/div[1]/div[2]/div[1]/div/div[3]/p/time/span[2]'
+            path_departure_time = x_path + '/div[2]/div/div[1]/div[2]/div[1]/div/div[1]/time'
+            path_arrival_time = x_path + '/div[2]/div/div[1]/div[2]/div[1]/div/div[2]/time'
+            path_departure = x_path + '/div[2]/div/div[1]/div[2]/div[1]/div/div[1]/p/span[1]'
+            path_arrival = x_path + '/div[2]/div/div[1]/div[2]/div[1]/div/div[2]/p/span[2]'
+
+            try:
+                price = driver.find_element(By.XPATH, path_price).text
+                total_time = driver.find_element(By.XPATH, path_total_time).text
+                departure_time = driver.find_element(By.XPATH, path_departure_time).text
+                arrival_time = driver.find_element(By.XPATH, path_arrival_time).text
+                departure = driver.find_element(By.XPATH, path_departure).text
+                arrival = driver.find_element(By.XPATH, path_arrival).text
+
+                one_flight = {'price': price,
+                              'total_time': total_time,
+                              'departure_time': departure_time,
+                              'arrival_time': arrival_time,
+                              'departure': departure,
+                              'arrival': arrival}
+                flight_information.append(one_flight)
+
+            except NoSuchElementException:
+                break
+
+        print(flight_information)
+        time.sleep(150)
 
 
 def user_data():
-    departure_user = input('Enter city and airport of departure (ex. Kyiv (KBP)): ')
-    arrival_user = input('Enter the city and airport of arrival (ex. East London (ELS)): ')
+    departure_user = input('Enter city and airport of departure (ex. Warsaw (WAW)): ')
+    arrival_user = input('Enter the city and airport of arrival (ex. East London (ELS)): ').split(',')
     date_departure_user = input('Enter departure date (ex. 27-12-2022): ')     # дата вылета
 
     # высчитываю разницу в месяцах (пригодиться, чтобы накликивать в таблице нужный месяц и год)
